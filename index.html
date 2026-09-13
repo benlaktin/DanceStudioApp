@@ -31,6 +31,9 @@ body{font-family:'Inter',sans-serif;background:#F9FAFB;color:#1f2937;overflow:hi
 .pill{display:inline-flex;align-items:center;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:500}
 .btn-primary{background:#7C3AED;color:#fff;border:none;padding:8px 18px;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:background .15s}
 .btn-primary:hover{background:#6D28D9}
+
+
+
 .btn-primary:disabled{opacity:.6;cursor:not-allowed}
 .btn-secondary{background:#F3F4F6;color:#374151;border:1px solid #E5E7EB;padding:8px 18px;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:all .15s}
 .btn-secondary:hover{background:#E5E7EB}
@@ -735,6 +738,8 @@ function renderAttendance(mc){
     const absentCount = () => Object.values(marks).filter(v => v === 'absent').length;
     const lateCount = () => Object.values(marks).filter(v => v === 'late').length;
 
+    
+
     function renderRoster() {
       const pc = presentCount(), ac = absentCount(), lc = lateCount();
       const total = enrolled.length;
@@ -744,6 +749,20 @@ function renderAttendance(mc){
           <div>
             <h2 style="font-size:18px;font-weight:700">${escH(cls.name)}</h2>
             <p style="font-size:13px;color:#6b7280">${t ? escH(t.name) : ''}${timeStr ? ' · ' + escH(timeStr) : ''} · ${dateLabel}</p>
+            ${cls.notes ? `
+<div style="
+margin-top:10px;
+padding:10px;
+background:#FEF3C7;
+border-left:4px solid #F59E0B;
+border-radius:6px;
+font-size:12px;
+line-height:1.5;
+">
+<strong>Teacher Notes:</strong>
+${escH(cls.notes)}
+</div>
+` : ''}
           </div>
           <div style="display:flex;gap:8px">
             <span style="background:#D1FAE5;color:#065F46;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600">${pc} Present</span>
@@ -807,14 +826,59 @@ function renderAttendance(mc){
       </div>`;
 
       // Attach button listeners
-      rp.querySelectorAll('.att-btn').forEach(btn => btn.addEventListener('click', function() {
-        const sid = this.dataset.sid; const st = this.dataset.status;
-        marks[sid] = st;
-        const row = this.closest('[data-sid]');
-        row.querySelectorAll('.att-btn').forEach(x => x.className = 'att-btn ' + (x.dataset.status === st ? st : ''));
-        // Re-render summary counts only
-        renderRoster();
-      }));
+rp.querySelectorAll('.att-btn').forEach(btn =>
+  btn.addEventListener('click', function() {
+
+    const sid = this.dataset.sid;
+    const st = this.dataset.status;
+
+    marks[sid] = st;
+
+    const row = this.closest('[data-sid]');
+
+    const rosterContainer =
+      document.getElementById('att-student-rows');
+
+    const currentScroll =
+      rosterContainer ? rosterContainer.scrollTop : 0;
+
+    const allRows =
+      Array.from(
+        document.querySelectorAll('#att-student-rows > div[data-sid]')
+      );
+
+    const currentIndex =
+      allRows.findIndex(r => r.dataset.sid === sid);
+
+    renderRoster();
+
+    setTimeout(() => {
+
+      const newContainer =
+        document.getElementById('att-student-rows');
+
+      if (newContainer) {
+        newContainer.scrollTop = currentScroll;
+      }
+
+      const refreshedRows =
+        Array.from(
+          document.querySelectorAll('#att-student-rows > div[data-sid]')
+        );
+
+      const nextRow =
+        refreshedRows[currentIndex + 1];
+
+      if (nextRow) {
+        nextRow.scrollIntoView({
+          block: 'center',
+          behavior: 'smooth'
+        });
+      }
+
+    }, 0);
+
+}));
 
       // Mark All Present
       const mapBtn = rp.querySelector('#att-mark-all-present');
@@ -945,7 +1009,25 @@ openModal(`
 <div><label class="form-label">End Time</label><input id="mc-endtime" class="form-input" value="${cls?escH(cls.endTime||''):''}" placeholder="11:00 AM"></div>
 <div><label class="form-label">Room</label><input id="mc-room" class="form-input" value="${cls?escH(cls.room||''):''}" placeholder="Studio A"></div>
 </div>
-<div><label class="form-label">Age Group</label><input id="mc-age" class="form-input" value="${cls?escH(cls.ageGroup||''):''}" placeholder="Ages 7-12"></div>
+
+<div>
+<label class="form-label">Age Group</label>
+<input id="mc-age" class="form-input"
+value="${cls?escH(cls.ageGroup||''):''}"
+placeholder="Ages 7-12">
+</div>
+
+<div>
+<label class="form-label">Class Notes</label>
+<textarea
+id="mc-notes"
+class="form-input"
+rows="4"
+placeholder="Dress code, behaviour expectations, recital reminders, costume information, etc."
+>${cls?escH(cls.notes||''):''}</textarea>
+</div>
+
+
 <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
 <button class="btn-secondary" id="mc-cancel">Cancel</button>
 <button class="btn-primary" id="mc-save"><i data-lucide="save" class="w-4 h-4"></i> Save Class</button>
@@ -958,7 +1040,21 @@ const teacherId=document.getElementById('mc-teacher').value;
 if(!name){document.getElementById('mc-name').classList.add('error');showToast('Class name is required','error');return}
 if(!teacherId){document.getElementById('mc-teacher').classList.add('error');showToast('Please select a teacher','error');return}
 const days=Array.from(document.querySelectorAll('#modal-panel .checkbox-group input:checked')).map(i=>i.value).join(',');
-const row={id:cls?cls.id:uid('CL'),name,teacherId,tempTeacherId:cls?cls.tempTeacherId||'':'',days,time:document.getElementById('mc-time').value.trim(),endTime:document.getElementById('mc-endtime').value.trim(),room:document.getElementById('mc-room').value.trim(),ageGroup:document.getElementById('mc-age').value.trim(),active:true};
+
+const row={
+id:cls?cls.id:uid('CL'),
+name,
+teacherId,
+tempTeacherId:cls?cls.tempTeacherId||'':'',
+days,
+time:document.getElementById('mc-time').value.trim(),
+endTime:document.getElementById('mc-endtime').value.trim(),
+room:document.getElementById('mc-room').value.trim(),
+ageGroup:document.getElementById('mc-age').value.trim(),
+notes:document.getElementById('mc-notes').value.trim(),
+active:true
+};
+
 const idx=DB.classes.findIndex(c=>c.id===row.id);
 if(idx>=0)DB.classes[idx]=row;else DB.classes.push(row);
 closeModal();renderPage();showToast('Class saved!');
@@ -988,6 +1084,20 @@ openModal(`
   <div style="min-width:0">
     <h2 style="font-size:20px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escH(cls.name)}</h2>
     <p style="color:#6b7280;font-size:13px">${t?escH(t.name):''} · ${escH(timeLabel)} · ${escH(cls.room||'')}</p>
+    ${cls.notes ? `
+<div style="
+margin-top:12px;
+padding:12px;
+background:#F9FAFB;
+border-left:4px solid #7C3AED;
+border-radius:6px;
+font-size:13px;
+line-height:1.6;
+">
+<strong>Class Notes</strong><br>
+${escH(cls.notes)}
+</div>
+` : ''}
     ${tempT?`<p style="color:#F59E0B;font-size:12px;font-weight:600;margin-top:2px">⚡ Temp: ${escH(tempT.name)}</p>`:''}
   </div>
   <button id="cd-close" style="background:none;border:none;cursor:pointer;color:#6b7280;font-size:20px;padding:4px;flex-shrink:0">✕</button>
