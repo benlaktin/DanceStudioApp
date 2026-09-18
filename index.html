@@ -231,12 +231,12 @@ body{font-family:'Inter',sans-serif;background:#F9FAFB;color:#1f2937;overflow:hi
 <script>
 if(typeof lucide!=="undefined"&&typeof lucide.createIcons==="function"){lucide.createIcons()}
 
-const SCRIPT_URL='https://script.google.com/macros/s/AKfycbx7e8C_gNljOd5yqN4V0kFk6dI2yL22HPiPa_12KwvQ3P1zVxfFvqLbIlIJPdI1uEelCQ/exec';
+const SCRIPT_URL='https://script.google.com/macros/s/AKfycbwq3k4lxsYIQzraaLdEf0QZoDdxlIekPJz6OffUTEOG44ifszbyETv-kkQdJXvkYAXc/exec';
 const ADMIN_CRED={username:'admin',password:'Studio2026',role:'admin',displayName:'Admin',initials:'AD',color:'#7C3AED'};
 const DAYS_SHORT=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 const DAYS_FULL=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
-let DB={teachers:[],classes:[],students:[],attendance:[],events:[],loaded:false};
+let DB={teachers:[],classes:[],students:[],attendance:[],attendanceNotes:[],events:[],loaded:false};
 let currentUser=null;
 let currentPage='dashboard';
 let weeklyChart=null;
@@ -409,9 +409,9 @@ async function apiGet(){
     ...s,
     active: s.active !== false && s.active !== 'false' && s.active !== 0
 }));
-``
     DB.attendance = d.attendance || [];
-    DB.events     = d.events     || [];
+    DB.attendanceNotes = d.attendanceNotes || [];
+    DB.events = d.events || [];
     DB.loaded = true;
   } catch(e) {
     document.getElementById('loading-screen').style.display = 'none';
@@ -601,37 +601,26 @@ function renderAttendance(mc){
   const DAY_LABELS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
   mc.innerHTML = `<div class="fade-in">
-<div class="page-header">
-  <div><h1 style="font-size:24px;font-weight:700">Take Attendance</h1>
-  <p style="color:#6b7280;font-size:14px;margin-top:2px">Select a date to see today's classes</p></div>
-</div>
-
-<div class="card" style="margin-bottom:20px;padding:14px 20px">
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-    <div>
-      <label class="form-label" style="margin-bottom:4px">Date</label>
-      <input type="date" id="att-date" class="form-input" style="min-width:180px" value="${todayStr()}">
+    <div class="page-header">
+      <div><h1 style="font-size:24px;font-weight:700">Take Attendance</h1>
+      <p style="color:#6b7280;font-size:14px;margin-top:2px">Select a date to see the scheduled classes</p></div>
     </div>
-    <div id="att-day-badge" style="margin-top:18px"></div>
-  </div>
-</div>
-
-<div style="display:grid;grid-template-columns:300px 1fr;gap:20px;align-items:start" id="att-layout">
-  <div>
-    <h3 style="font-size:14px;font-weight:700;color:#374151;margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">Classes on this day</h3>
-    <div id="att-class-list"><p style="color:#9ca3af;font-size:13px;text-align:center;padding:30px 10px">Select a date to load classes</p></div>
-  </div>
-  <div id="att-roster-panel">
-    <div style="display:flex;align-items:center;justify-content:center;height:200px;color:#d1d5db">
-      <div style="text-align:center"><div style="font-size:40px;margin-bottom:10px">👈</div><p style="font-size:14px">Select a class to take attendance</p></div>
+    <div class="card" style="margin-bottom:20px;padding:14px 20px">
+      <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+        <div><label class="form-label" style="margin-bottom:4px">Date</label>
+        <input type="date" id="att-date" class="form-input" style="min-width:180px" value="${todayStr()}"></div>
+        <div id="att-day-badge" style="margin-top:18px"></div>
+      </div>
     </div>
-  </div>
-</div>
-</div>`;
+    <div style="display:grid;grid-template-columns:300px 1fr;gap:20px;align-items:start" id="att-layout">
+      <div><h3 style="font-size:14px;font-weight:700;color:#374151;margin-bottom:10px;text-transform:uppercase;letter-spacing:.05em">Classes on this day</h3>
+      <div id="att-class-list"></div></div>
+      <div id="att-roster-panel"><div style="display:flex;align-items:center;justify-content:center;height:200px;color:#d1d5db"><div style="text-align:center"><div style="font-size:40px;margin-bottom:10px">👈</div><p style="font-size:14px">Select a class to take attendance</p></div></div></div>
+    </div>
+  </div>`;
 
-  // Responsive: stack on narrow screens
   const layout = document.getElementById('att-layout');
-  const checkWidth = () => { if(window.innerWidth < 768) layout.style.gridTemplateColumns = '1fr'; else layout.style.gridTemplateColumns = '300px 1fr'; };
+  const checkWidth = () => layout.style.gridTemplateColumns = window.innerWidth < 768 ? '1fr' : '300px 1fr';
   checkWidth();
   window.addEventListener('resize', checkWidth);
 
@@ -639,300 +628,145 @@ function renderAttendance(mc){
   let selectedClassId = null;
   let marks = {};
 
-  function getDow(dateStr) {
-    return new Date(dateStr + 'T12:00:00').getDay(); // 0=Sun
-  }
+  function getDow(dateStr){ return new Date(dateStr + 'T12:00:00').getDay(); }
 
-  function loadClassesForDate() {
+  function loadClassesForDate(){
     const dateStr = dateInput.value;
-    if (!dateStr) return;
+    if(!dateStr) return;
     const dowIdx = getDow(dateStr);
     const dowAbbr = DAY_ABBRS[dowIdx];
     const dowLabel = DAY_LABELS[dowIdx];
+    document.getElementById('att-day-badge').innerHTML = `<span style="background:#EDE9FE;color:#6D28D9;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:600">${dowLabel}</span>`;
 
-    // Day badge
-    document.getElementById('att-day-badge').innerHTML =
-      `<span style="background:#EDE9FE;color:#6D28D9;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:600">${dowLabel}</span>`;
-
-    // Filter classes teaching on this day of week
     const myClasses = isAdmin
       ? DB.classes.filter(c => c.active !== false)
-      : DB.classes.filter(c => c.active !== false && (c.teacherId === currentUser.teacherId || (c.tempTeacherId && c.tempTeacherId === currentUser.teacherId)));
-
+      : DB.classes.filter(c => c.active !== false && (c.teacherId === currentUser.teacherId || c.tempTeacherId === currentUser.teacherId));
     const todayClasses = myClasses.filter(c => parseDays(c.days).includes(dowAbbr));
+    const classList = document.getElementById('att-class-list');
 
-    const cl = document.getElementById('att-class-list');
-    if (!todayClasses.length) {
-      cl.innerHTML = `<div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:10px;padding:16px;text-align:center;font-size:13px;color:#92400E">No classes scheduled for ${dowLabel}s</div>`;
+    if(!todayClasses.length){
+      classList.innerHTML = `<div style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:10px;padding:16px;text-align:center;font-size:13px;color:#92400E">No classes scheduled for ${dowLabel}s</div>`;
       document.getElementById('att-roster-panel').innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:200px;color:#d1d5db"><div style="text-align:center"><div style="font-size:40px;margin-bottom:10px">📭</div><p style="font-size:14px">No classes on ${dowLabel}s</p></div></div>`;
       selectedClassId = null;
       return;
     }
 
-    cl.innerHTML = todayClasses.map(c => {
-      const t = getTeacher(c.teacherId);
-      const tempT = c.tempTeacherId ? getTeacher(c.tempTeacherId) : null;
+    classList.innerHTML = todayClasses.map(c => {
+      const teacher = getTeacher(c.teacherId);
       const enrolled = DB.students.filter(s => s.active !== false && parseList(s.classes).includes(c.id));
-      const taken = DB.attendance.filter(a => a.classId === c.id && a.date === dateStr);
+      const taken = DB.attendance.filter(a => String(a.classId) === String(c.id) && String(a.date) === String(dateStr));
       const pct = enrolled.length ? Math.round(taken.filter(a => a.status === 'present' || a.status === 'late').length / enrolled.length * 100) : null;
-      const timeStr = c.time
-    ? (c.endTime
-        ? formatTime(c.time) + ' – ' + formatTime(c.endTime)
-        : formatTime(c.time))
-    : '';
-      return `<div class="att-class-card${selectedClassId === c.id ? ' selected' : ''}" data-cid="${c.id}" style="background:#fff;border:2px solid ${selectedClassId === c.id ? '#7C3AED' : '#E5E7EB'};border-radius:12px;padding:14px 16px;margin-bottom:10px;cursor:pointer;transition:all .15s">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-          <div style="min-width:0">
-            <div style="font-size:14px;font-weight:700;color:#1f2937;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escH(c.name)}</div>
-            <div style="font-size:12px;color:#6b7280;margin-top:2px">${t ? escH(t.name) : ''}${timeStr ? ' · ' + escH(timeStr) : ''}${c.room ? ' · ' + escH(c.room) : ''}</div>
-            ${tempT ? `<div style="font-size:11px;color:#F59E0B;font-weight:600;margin-top:2px">⚡ Temp: ${escH(tempT.name)}</div>` : ''}
-          </div>
-          <div style="text-align:right;flex-shrink:0">
-            <div style="font-size:12px;color:#6b7280">${enrolled.length} student${enrolled.length !== 1 ? 's' : ''}</div>
-            ${pct !== null ? `<div style="font-size:12px;font-weight:600;color:${pct >= 70 ? '#065F46' : '#991B1B'}">${pct}% att.</div>` : '<div style="font-size:11px;color:#9ca3af">Not taken</div>'}
-          </div>
-        </div>
+      const timeStr = c.time ? (c.endTime ? formatTime(c.time) + ' – ' + formatTime(c.endTime) : formatTime(c.time)) : '';
+      return `<div class="att-class-card" data-cid="${escH(c.id)}" style="background:#fff;border:2px solid ${selectedClassId===c.id?'#7C3AED':'#E5E7EB'};border-radius:12px;padding:14px 16px;margin-bottom:10px;cursor:pointer">
+        <div style="font-size:14px;font-weight:700">${escH(c.name)}</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:2px">${teacher?escH(teacher.name):''}${timeStr?' · '+escH(timeStr):''}${c.room?' · '+escH(c.room):''}</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:6px">${enrolled.length} student${enrolled.length===1?'':'s'}${pct===null?' · Not taken':' · '+pct+'% attendance'}</div>
       </div>`;
     }).join('');
 
-    document.querySelectorAll('.att-class-card').forEach(card => {
-      card.addEventListener('click', function() {
-        selectedClassId = this.dataset.cid;
-        loadClassesForDate(); // re-render class list to update selected highlight
-        loadRoster(selectedClassId, dateStr);
-      });
-    });
-
-    // If a class was previously selected, reload its roster
-    if (selectedClassId && todayClasses.find(c => c.id === selectedClassId)) {
+    classList.querySelectorAll('.att-class-card').forEach(card => card.addEventListener('click', function(){
+      selectedClassId = this.dataset.cid;
+      loadClassesForDate();
       loadRoster(selectedClassId, dateStr);
-    }
+    }));
   }
 
-  function loadRoster(cid, dateStr) {
+  function loadRoster(cid,dateStr){
     marks = {};
     const cls = getClass(cid);
-    if (!cls) return;
-    const t = getTeacher(cls.teacherId);
+    if(!cls) return;
+    const teacher = getTeacher(cls.teacherId);
     const enrolled = DB.students.filter(s => s.active !== false && parseList(s.classes).includes(cid));
-    const existing = DB.attendance.filter(a => a.classId === cid && a.date === dateStr);
-    enrolled.forEach(s => { const ex = existing.find(a => a.studentId === s.id); marks[s.id] = ex ? ex.status : null; });
+    const existing = DB.attendance.filter(a => String(a.classId) === String(cid) && String(a.date) === String(dateStr));
+    enrolled.forEach(s => {
+      const record = existing.find(a => String(a.studentId) === String(s.id));
+      marks[s.id] = record ? record.status : null;
+    });
 
-    const timeStr = cls.time
-    ? (cls.endTime
-        ? formatTime(cls.time) + ' – ' + formatTime(cls.endTime)
-        : formatTime(cls.time))
-    : '';
-``
-    const dowIdx = getDow(dateStr);
-    const dateLabel = new Date(dateStr + 'T12:00:00').toLocaleDateString('en-CA', {weekday:'long', month:'long', day:'numeric', year:'numeric'});
+    const existingClassNote = DB.attendanceNotes.find(n => String(n.classId) === String(cid) && String(n.date) === String(dateStr));
+    let classNote = existingClassNote ? String(existingClassNote.note || '') : '';
+    const pastClassNotes = DB.attendanceNotes
+      .filter(n => String(n.classId) === String(cid) && String(n.date) !== String(dateStr) && String(n.note || '').trim())
+      .sort((a,b) => String(b.date).localeCompare(String(a.date)));
 
+    const dateLabel = new Date(dateStr + 'T12:00:00').toLocaleDateString('en-CA',{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+    const timeStr = cls.time ? (cls.endTime ? formatTime(cls.time)+' – '+formatTime(cls.endTime) : formatTime(cls.time)) : '';
     const rp = document.getElementById('att-roster-panel');
-    if (!enrolled.length) {
-      rp.innerHTML = `<div class="card"><p style="color:#9ca3af;text-align:center;padding:30px">No students enrolled in ${escH(cls.name)}</p></div>`;
-      return;
-    }
 
-    const allMarked = () => Object.values(marks).every(v => v !== null);
-    const presentCount = () => Object.values(marks).filter(v => v === 'present').length;
-    const absentCount = () => Object.values(marks).filter(v => v === 'absent').length;
-    const lateCount = () => Object.values(marks).filter(v => v === 'late').length;
+    if(!enrolled.length){ rp.innerHTML=`<div class="card"><p style="color:#9ca3af;text-align:center;padding:30px">No students enrolled in ${escH(cls.name)}</p></div>`; return; }
 
-    
+    function renderRoster(){
+      const pc=Object.values(marks).filter(v=>v==='present').length;
+      const ac=Object.values(marks).filter(v=>v==='absent').length;
+      const lc=Object.values(marks).filter(v=>v==='late').length;
+      const marked=pc+ac+lc;
 
-    function renderRoster() {
-      const pc = presentCount(), ac = absentCount(), lc = lateCount();
-      const total = enrolled.length;
-      const marked = pc + ac + lc;
-      rp.innerHTML = `<div class="card">
+      rp.innerHTML=`<div class="card">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;flex-wrap:wrap;gap:8px">
-          <div>
-            <h2 style="font-size:18px;font-weight:700">${escH(cls.name)}</h2>
-            <p style="font-size:13px;color:#6b7280">${t ? escH(t.name) : ''}${timeStr ? ' · ' + escH(timeStr) : ''} · ${dateLabel}</p>
-            ${cls.notes ? `
-<div style="
-margin-top:10px;
-padding:10px;
-background:#FEF3C7;
-border-left:4px solid #F59E0B;
-border-radius:6px;
-font-size:12px;
-line-height:1.5;
-">
-<strong>Teacher Notes:</strong>
-${escH(cls.notes)}
-</div>
-` : ''}
-          </div>
-          <div style="display:flex;gap:8px">
-            <span style="background:#D1FAE5;color:#065F46;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600">${pc} Present</span>
-            <span style="background:#FEE2E2;color:#991B1B;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600">${ac} Absent</span>
-            <span style="background:#FEF3C7;color:#92400E;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600">${lc} Late</span>
-          </div>
+          <div><h2 style="font-size:18px;font-weight:700">${escH(cls.name)}</h2><p style="font-size:13px;color:#6b7280">${teacher?escH(teacher.name):''}${timeStr?' · '+escH(timeStr):''} · ${escH(dateLabel)}</p></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><span class="pill status-pill-present">${pc} Present</span><span class="pill status-pill-absent">${ac} Absent</span><span class="pill status-pill-late">${lc} Late</span></div>
         </div>
-        <div style="background:#f3f4f6;border-radius:8px;height:6px;margin-bottom:16px"><div style="background:#7C3AED;height:6px;border-radius:8px;transition:width .3s;width:${Math.round(marked/total*100)}%"></div></div>
-        <div
-    id="att-student-rows"
-    style="
-        max-height: 60vh;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
-        padding-right: 4px;
-    ">
-
-        ${enrolled.map(s => {
-          const st = marks[s.id];
-          return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f3f4f6;gap:12px" data-sid="${s.id}">
-            <div style="display:flex;align-items:center;gap:10px;min-width:0">
-              <div class="avatar" style="width:34px;height:34px;font-size:12px;background:${t?.color||'#7C3AED'};flex-shrink:0">${initials(s.name)}</div>
-              <div style="min-width:0">
-                <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escH(s.name)}</div>
-                <div style="font-size:11px;color:#9ca3af">
-    Born ${formatDate(s.dateOfBirth)}
-</div>
-              </div>
-            </div>
-            <div style="display:flex;gap:6px;flex-shrink:0">
-              <button class="att-btn ${st==='present'?'present':''}" data-sid="${s.id}" data-status="present" style="font-size:12px;padding:5px 10px">✓ Present</button>
-              <button class="att-btn ${st==='late'?'late':''}" data-sid="${s.id}" data-status="late" style="font-size:12px;padding:5px 10px">⏱ Late</button>
-              <button class="att-btn ${st==='absent'?'absent':''}" data-sid="${s.id}" data-status="absent" style="font-size:12px;padding:5px 10px">✗ Absent</button>
-            </div>
-          </div>`;
-        }).join('')}
+        <div style="background:#f3f4f6;border-radius:8px;height:6px;margin-bottom:16px"><div style="background:#7C3AED;height:6px;border-radius:8px;width:${Math.round(marked/enrolled.length*100)}%"></div></div>
+        <div id="att-student-rows" style="max-height:60vh;overflow-y:auto;padding-right:4px">
+          ${enrolled.map(s=>{const st=marks[s.id];return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f3f4f6;gap:12px" data-sid="${escH(s.id)}">
+            <div style="display:flex;align-items:center;gap:10px;min-width:0"><div class="avatar" style="width:34px;height:34px;font-size:12px;background:${teacher?.color||'#7C3AED'}">${initials(s.name)}</div><div><div style="font-size:14px;font-weight:600">${escH(s.name)}</div><div style="font-size:11px;color:#9ca3af">Born ${formatDate(s.dateOfBirth)}</div></div></div>
+            <div style="display:flex;gap:6px"><button class="att-btn ${st==='present'?'present':''}" data-sid="${escH(s.id)}" data-status="present">✓ Present</button><button class="att-btn ${st==='late'?'late':''}" data-sid="${escH(s.id)}" data-status="late">⏱ Late</button><button class="att-btn ${st==='absent'?'absent':''}" data-sid="${escH(s.id)}" data-status="absent">✗ Absent</button></div>
+          </div>`}).join('')}
         </div>
-        <div
-    style="
-        position: sticky;
-        bottom: 0;
-        background: white;
-        padding: 12px;
-        margin-top: 16px;
-        border-top: 1px solid #e5e7eb;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        flex-wrap: wrap;
-        gap: 10px;
-        z-index: 50;
-    ">
-          <div style="display:flex;gap:8px">
-            <button id="att-mark-all-present" class="btn-secondary" style="font-size:12px;padding:6px 12px">Mark All Present</button>
+        <div style="margin-top:18px;padding:16px;background:#F9FAFB;border:1px solid #E5E7EB;border-radius:10px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px;margin-bottom:10px">
+            <div><label for="att-class-note" class="form-label" style="font-size:15px;font-weight:700">Class Notes</label><p style="font-size:12px;color:#6b7280">Notes for ${escH(dateLabel)}</p></div>
+            <div style="min-width:210px"><label for="att-past-note-date" class="form-label">View Past Notes</label><select id="att-past-note-date" class="form-input" ${pastClassNotes.length?'':'disabled'}><option value="">Select a date...</option>${pastClassNotes.map(n=>`<option value="${escH(String(n.date))}">${escH(formatDate(n.date))}</option>`).join('')}</select></div>
           </div>
-          <div style="display:flex;align-items:center;gap:12px">
-            <span id="att-save-status" style="font-size:12px;color:#6b7280"></span>
-            <button id="att-save-btn" class="btn-primary"><i data-lucide="save" class="w-4 h-4"></i> Save Attendance</button>
-          </div>
+          <textarea id="att-class-note" class="form-input" rows="5" maxlength="5000" placeholder="Add notes about this class..." style="resize:vertical;line-height:1.5">${escH(classNote)}</textarea>
+          <div style="display:flex;justify-content:space-between;margin-top:6px"><span style="font-size:11px;color:#9ca3af">Saved for this class and attendance date.</span><span id="att-note-character-count" style="font-size:11px;color:#9ca3af">${classNote.length}/5000</span></div>
+          <div id="att-past-note-panel" style="display:none;margin-top:14px;padding:14px;background:#fff;border-left:4px solid #7C3AED;border-radius:8px"><div id="att-past-note-title" style="font-size:12px;font-weight:700;color:#4C1D95;margin-bottom:6px"></div><div id="att-past-note-text" style="font-size:13px;color:#374151;line-height:1.6;white-space:pre-wrap"></div><div id="att-past-note-meta" style="font-size:11px;color:#9ca3af;margin-top:8px"></div></div>
+        </div>
+        <div style="position:sticky;bottom:0;background:white;padding:12px;margin-top:16px;border-top:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;z-index:50">
+          <button id="att-mark-all-present" class="btn-secondary">Mark All Present</button><div style="display:flex;align-items:center;gap:12px"><span id="att-save-status" style="font-size:12px;color:#6b7280"></span><button id="att-save-btn" class="btn-primary"><i data-lucide="save" class="w-4 h-4"></i> Save Attendance</button></div>
         </div>
       </div>`;
 
-      // Attach button listeners
-rp.querySelectorAll('.att-btn').forEach(btn =>
-  btn.addEventListener('click', function() {
-
-    const sid = this.dataset.sid;
-    const st = this.dataset.status;
-
-    marks[sid] = st;
-
-    const row = this.closest('[data-sid]');
-
-    const rosterContainer =
-      document.getElementById('att-student-rows');
-
-    const currentScroll =
-      rosterContainer ? rosterContainer.scrollTop : 0;
-
-    const allRows =
-      Array.from(
-        document.querySelectorAll('#att-student-rows > div[data-sid]')
-      );
-
-    const currentIndex =
-      allRows.findIndex(r => r.dataset.sid === sid);
-
-    renderRoster();
-
-    setTimeout(() => {
-
-      const newContainer =
-        document.getElementById('att-student-rows');
-
-      if (newContainer) {
-        newContainer.scrollTop = currentScroll;
-      }
-
-      const refreshedRows =
-        Array.from(
-          document.querySelectorAll('#att-student-rows > div[data-sid]')
-        );
-
-      const nextRow =
-        refreshedRows[currentIndex + 1];
-
-      if (nextRow) {
-        nextRow.scrollIntoView({
-          block: 'center',
-          behavior: 'smooth'
-        });
-      }
-
-    }, 0);
-
-}));
-
-      // Mark All Present
-      const mapBtn = rp.querySelector('#att-mark-all-present');
-      if (mapBtn) mapBtn.addEventListener('click', () => {
-        enrolled.forEach(s => { marks[s.id] = 'present'; });
-        renderRoster();
+      const noteInput=rp.querySelector('#att-class-note');
+      noteInput.addEventListener('input',function(){ classNote=this.value; rp.querySelector('#att-note-character-count').textContent=this.value.length+'/5000'; });
+      const pastSelect=rp.querySelector('#att-past-note-date');
+      pastSelect.addEventListener('change',function(){
+        const panel=rp.querySelector('#att-past-note-panel');
+        const selected=pastClassNotes.find(n=>String(n.date)===String(this.value));
+        if(!selected){panel.style.display='none';return;}
+        rp.querySelector('#att-past-note-title').textContent='Class Notes for '+formatDate(selected.date);
+        rp.querySelector('#att-past-note-text').textContent=selected.note||'No note was entered.';
+        const meta=[]; if(selected.updatedBy)meta.push('Saved by '+selected.updatedBy); if(selected.timestamp)meta.push('Last updated '+formatDateTime(selected.timestamp));
+        rp.querySelector('#att-past-note-meta').textContent=meta.join(' · '); panel.style.display='block';
       });
 
-      // Save
-      const saveBtn = rp.querySelector('#att-save-btn');
-      if (saveBtn) saveBtn.addEventListener('click', async () => {
-        const markedEntries = Object.entries(marks).filter(([,v]) => v);
-        if (!markedEntries.length) { showToast('Please mark at least one student', 'warning'); return; }
-        saveBtn.disabled = true;
-        saveBtn.innerHTML = '<span class="spinner" style="width:16px;height:16px;border-width:2px"></span> Saving…';
-        const ts = new Date().toISOString();
-        const records = markedEntries.map(([sid, status], i) => ({
-          id: 'A' + Date.now() + i,
-          classId: cid,
-          studentId: sid,
-          date: dateStr,
-          status,
-          markedBy: currentUser.displayName,
-          timestamp: ts
-        }));
-        // Upsert local DB — update existing or add new
-        records.forEach(r => {
-          const idx = DB.attendance.findIndex(a => a.classId === r.classId && a.studentId === r.studentId && a.date === r.date);
-          if (idx >= 0) DB.attendance[idx] = r; else DB.attendance.push(r);
-        });
-        await apiPost('saveAttendanceBatch', { records });
-        saveBtn.disabled = false;
-        saveBtn.innerHTML = '<i data-lucide="save" class="w-4 h-4"></i> Save Attendance';
-        if (typeof lucide !== 'undefined') lucide.createIcons();
-        rp.querySelector('#att-save-status').textContent = '● Saved · ' + new Date().toLocaleTimeString();
-        showToast('Attendance saved!');
-        // Refresh class list to update attendance % badges
-        loadClassesForDate();
+      rp.querySelectorAll('.att-btn').forEach(btn=>btn.addEventListener('click',function(){ marks[this.dataset.sid]=this.dataset.status; renderRoster(); }));
+      rp.querySelector('#att-mark-all-present').addEventListener('click',()=>{ enrolled.forEach(s=>marks[s.id]='present'); renderRoster(); });
+      rp.querySelector('#att-save-btn').addEventListener('click',async function(){
+        const saveBtn=this;
+        const markedEntries=Object.entries(marks).filter(([,status])=>status);
+        const noteText=rp.querySelector('#att-class-note').value.trim();
+        if(!markedEntries.length&&!noteText){showToast('Please mark at least one student or enter a class note','warning');return;}
+        saveBtn.disabled=true; saveBtn.textContent='Saving...';
+        const timestamp=new Date().toISOString();
+        const records=markedEntries.map(([studentId,status],i)=>({id:'A'+Date.now()+i,classId:cid,studentId,date:dateStr,status,markedBy:currentUser.displayName,timestamp}));
+        try{
+          if(records.length){const ar=await apiPost('saveAttendanceBatch',{records});if(!ar||ar.error||ar.ok===false)throw new Error(ar?.error||'Attendance could not be saved');}
+          const nr=await apiPost('saveAttendanceNote',{classId:cid,date:dateStr,note:noteText,updatedBy:currentUser.displayName});
+          if(!nr||nr.error||nr.ok===false)throw new Error(nr?.error||'Class note could not be saved');
+          records.forEach(r=>{const i=DB.attendance.findIndex(a=>String(a.classId)===String(r.classId)&&String(a.studentId)===String(r.studentId)&&String(a.date)===String(r.date));if(i>=0)DB.attendance[i]=r;else DB.attendance.push(r);});
+          const saved=nr.row||{id:existingClassNote?.id||'N'+Date.now(),classId:cid,date:dateStr,note:noteText,updatedBy:currentUser.displayName,timestamp};
+          const ni=DB.attendanceNotes.findIndex(n=>String(n.classId)===String(cid)&&String(n.date)===String(dateStr));if(ni>=0)DB.attendanceNotes[ni]=saved;else DB.attendanceNotes.push(saved);
+          showToast('Attendance and class notes saved!'); loadClassesForDate(); loadRoster(cid,dateStr);
+        }catch(error){console.error(error);showToast(error.message||'Could not save attendance and class notes','error');}
+        finally{saveBtn.disabled=false;saveBtn.innerHTML='<i data-lucide="save" class="w-4 h-4"></i> Save Attendance';if(typeof lucide!=='undefined')lucide.createIcons();}
       });
-
-      if (typeof lucide !== 'undefined') lucide.createIcons();
+      if(typeof lucide!=='undefined')lucide.createIcons();
     }
-
     renderRoster();
   }
 
-  // Wire up date picker
-  dateInput.addEventListener('change', () => {
-    selectedClassId = null;
-    document.getElementById('att-roster-panel').innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:200px;color:#d1d5db"><div style="text-align:center"><div style="font-size:40px;margin-bottom:10px">👈</div><p style="font-size:14px">Select a class to take attendance</p></div></div>`;
-    loadClassesForDate();
-  });
-
-  // Load on init
+  dateInput.addEventListener('change',()=>{selectedClassId=null;document.getElementById('att-roster-panel').innerHTML='<div style="text-align:center;padding:60px;color:#9ca3af">Select a class to take attendance</div>';loadClassesForDate();});
   loadClassesForDate();
 }
 
@@ -976,7 +810,6 @@ return`<div class="card" style="position:relative;cursor:pointer" data-cid="${c.
 <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px"><span class="pill" style="background:#F3F4F6;color:#374151">${escH(c.ageGroup||'')}</span></div>
 <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">${parseDays(c.days).map(d=>`<span class="day-chip">${d}</span>`).join('')}</div>
 <div style="display:flex;justify-content:space-between;font-size:12px;color:#6b7280;margin-bottom:8px"><span>${escH(formatTime(c.time))}
-3
 ${c.endTime ? ' – ' + escH(formatTime(c.endTime)) : ''}</span><span>${escH(c.room||'')}</span></div>
 <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;margin-bottom:6px"><span style="color:#6b7280">${enrolled.length} enrolled</span><span style="font-weight:600;color:${rate>=70?'#065F46':rate>=50?'#92400E':'#991B1B'}">${rate}%</span></div>
 <div class="rate-bar"><div class="rate-fill" style="width:${rate}%;background:${rate>=70?'#10B981':rate>=50?'#F59E0B':'#EF4444'}"></div></div>
@@ -1265,25 +1098,76 @@ openModal(`
 </div>
 <div><label class="form-label">Joined Date</label><input id="ms-joined" class="form-input" type="date" value="${stu?stu.joined||'':todayStr()}"></div>
 <div><label class="form-label">Enrolled Classes</label><div class="checkbox-group" id="ms-classes">${DB.classes.filter(c=>c.active!==false).map(c=>`<label class="checkbox-item"><input type="checkbox" value="${c.id}" ${stClasses.includes(c.id)?'checked':''}>${escH(c.name)}</label>`).join('')}</div></div>
+
+<div>
+  <label for="ms-notes" class="form-label">
+    Student Notes
+  </label>
+
+  <textarea
+    id="ms-notes"
+    class="form-input"
+    rows="5"
+    maxlength="5000"
+    placeholder="Add notes about this student, such as learning goals, accommodations, injuries, reminders, or other important information..."
+    style="resize:vertical;line-height:1.5"
+  >${stu ? escH(stu.notes || '') : ''}</textarea>
+
+  <div style="
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-top:5px;
+    gap:10px;
+  ">
+    <span style="font-size:11px;color:#9ca3af">
+      These notes are attached to this student's profile.
+    </span>
+
+    <span
+      id="ms-notes-count"
+      style="font-size:11px;color:#9ca3af;white-space:nowrap"
+    >
+      ${stu ? String(stu.notes || '').length : 0}/5000
+    </span>
+  </div>
+</div>
+
 <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
 <button class="btn-secondary" id="ms-cancel">Cancel</button>
 <button class="btn-primary" id="ms-save"><i data-lucide="save" class="w-4 h-4"></i> Save Student</button>
 </div></div>`,'md');
 document.getElementById('ms-close').addEventListener('click',closeModal);
 document.getElementById('ms-cancel').addEventListener('click',closeModal);
+const studentNotesInput =
+  document.getElementById('ms-notes');
+
+const studentNotesCount =
+  document.getElementById('ms-notes-count');
+
+if (studentNotesInput && studentNotesCount) {
+  studentNotesInput.addEventListener('input', function() {
+    studentNotesCount.textContent =
+      this.value.length + '/5000';
+  });
+}
 document.getElementById('ms-save').addEventListener('click',async()=>{
+
 const name=document.getElementById('ms-name').value.trim();
 if(!name){document.getElementById('ms-name').classList.add('error');showToast('Name is required','error');return}
 const classes=Array.from(document.querySelectorAll('#ms-classes input:checked')).map(i=>i.value).join(',');
-const row={
-    id:stu?stu.id:uid('S'),
-    name,
-    dateOfBirth:document.getElementById('ms-dob').value,
-    phone:document.getElementById('ms-phone').value.trim(),
-    email:document.getElementById('ms-email').value.trim(),
-    classes,
-    joined:document.getElementById('ms-joined').value||todayStr(),
-    active:true
+const row = {
+  id: stu ? stu.id : uid('S'),
+  name: name,
+  dateOfBirth: document.getElementById('ms-dob').value,
+  phone: document.getElementById('ms-phone').value.trim(),
+  email: document.getElementById('ms-email').value.trim(),
+  classes: classes,
+  joined:
+    document.getElementById('ms-joined').value ||
+    todayStr(),
+  active: true,
+  notes: document.getElementById('ms-notes').value.trim()
 };
 const idx=DB.students.findIndex(s=>s.id===row.id);if(idx>=0)DB.students[idx]=row;else DB.students.push(row);
 closeModal();renderPage();showToast('Student saved!');
